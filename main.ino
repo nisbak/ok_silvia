@@ -1,68 +1,75 @@
-#include <UTFT.h> 
-#include <URTouch.h>
 #include <RBDdimmer.h>
+#include <PID_v1.h>
+#include <SPI.h>          // f.k. for Arduino-1.5.2
+#include "Adafruit_GFX.h"// Hardware-specific library
+#include <MCUFRIEND_kbv.h> //NOTE: Has to be edited as per https://github.com/prenticedavid/MCUFRIEND_kbv/issues/9 which changes D2-->D10, D3-->D11
+MCUFRIEND_kbv tft;
+#include <average.h>
+#include "TouchScreen.h" // only when you want to use touch screen 
 
-//==== Creating Objects
-UTFT    myGLCD(SSD1289,38,39,40,41); //Parameters should be adjusted to your Display/Schield model
-URTouch  myTouch( 6, 5, 4, 3, 2);
+//==== configure the Analog ports
+#define LCD_CS A3 // Chip Select goes to Analog 3
+#define LCD_CD A2 // Command/Data goes to Analog 2
+#define LCD_WR A1 // LCD Write goes to Analog 1
+#define LCD_RD A0 // LCD Read goes to Analog 0
+#define LCD_RESET A4 // Can alternately just connect to Arduino's reset pin
+#define PRESSURE_SENSOR_INPUT A5 // A5 - 0-5V Pressure Input
 
-//==== Defining Variables
-extern uint8_t SmallFont[];
-extern uint8_t BigFont[];
-
-int x, y;
-char currentPage, selectedUnit;
+//==== configure the Digital ports
+//Note, LCD uses 0-13
+const int FLOW_COUNT_INPUT = 18 //note: must be interrupt pin
+const int PumpPwmPin = 15
+const int GroupSolenoid = 16
 
 //==== Flow sensor
-const int FLOW_COUNT_INPUT = 13
 float mlPerFlowMeterPulse = 0.48f; // 0.42f;// ml/pulse
 float mlPerFlowMeterPulsePreInfusion = 0.34f; // 0.42f;// ml/pulse
+Average<uint32_t> g_averageF(4);
+EIFR = _BV (INTF4); // clear a cached interrupt (not very important)
+attachInterrupt(digitalPinToInterrupt(FLOW_COUNT_INPUT), flowPulseReceived, FALLING)
 
 //==== Pressure sensor
-const PRESSURE_SENSOR_INPUT A2 // A2 - 0-5V Pressure Input
 const LOW_CALIBRATION_PRESSURE_READING 290 // 10-bit AD reading when low (3.0 bar) pressure is applied (between 0-1023)
 const HIGH_CALIBRATION_PRESSURE_READING 788 // 10-bit AD reading when high (9.0 bar) pressure is applied (between 0-1023)
 const LOW_CALIBRATION_PRESSURE 30 // x10 in bar - so for 3.0 bar write 30
 const HIGH_CALIBRATION_PRESSURE 90 // x10 in bar - so for 9.0 bar write 90
+Average<float> g_averageP(6);
 
 //==== Pump controller
-#define outputPin  12 
-#define zerocross  5 // for boards with CHANGEBLE input pins
-
+//#define zerocross  5 // for boards with CHANGEBLE input pins. Note pin D2 for Mega
 //dimmerLamp dimmer(outputPin, zerocross); //initialase port for dimmer for ESP8266, ESP32, Arduino due boards
-dimmerLamp dimmer(outputPin); //initialase port for dimmer for MEGA, Leonardo, UNO, Arduino M0, Arduino Zero
+dimmerLamp PumpPwm(PumpPwmPin); //initialase port for dimmer for MEGA, Leonardo, UNO, Arduino M0, Arduino Zero
 
+//****************************************************************************
+// SETUP
+//***************************************************************************
 
-//************************************************************************
-// PID parameters
-//************************************************************************
-const uint16_t PIDSampleTime = 25; // in mSec
-const PRESSURE_AVERAGES 4
-const FLOW_AVERAGES 5
+void setup() 
+{
+	uint16_t ID = tft.readID();
+  tft.begin(ID);
+  #ifdef DISPLAY_ROTATION
+	tft.setRotation(0);
+  #endif
+  //PumpPwm.begin(NORMAL_MODE, OFF); //dimmer initialisation: name.begin(MODE, STATE) 
+  
+  pinMode(GroupSolenoid, OUTPUT);
+	pinMode(FLOW_COUNT_INPUT, INPUT_PULLUP);
+  
 
-// Pressure PID loop (pressure profiling)
-double Kpp = 60, Kpi = 20, Kpd = 3; 
-const PID_MIN_PRESSURE 4.0
-const PID_MAX_PRESSURE 10.0
-#define PRESSURE_PID_MIN_PWM 0 
-#define PRESSURE_PID_MAX_PWM 220
+  
+	attachInterrupt(digitalPinToInterrupt(FLOW_COUNT_INPUT), flowPulseReceived, FALLING);
 
-// Flow PID loop (flow profiling)
-double Kfp = 5, Kfi = 5, Kfd = 1;
-#define PID_MIN_FLOW 0
-#define PID_MAX_FLOW 150  // maximum debit in ml/min while in PI
-#define FLOW_PID_MIN_PWM 10
-#define FLOW_PID_MAX_PWM 150
-#define STALL_FLOW_RATE 20 //ml/min
+	Serial.begin(115200);
+	Serial.println("OK Silvia is starting....");
 
-void setup()
-
-pinMode(FLOW_COUNT_INPUT, INPUT_PULLUP);
-
-
+	pinMode(GroupSolenoid, OUTPUT);
+	pinMode(FLOW_COUNT_INPUT, INPUT_PULLUP);
 
 //****************************************************************************
 // Pull an Espresso - Setup
 //***************************************************************************
 
-attachInterrupt(digitalPinToInterrupt(FLOW_COUNT_INPUT), flowPulseReceived, FALLING);
+  
+
+
