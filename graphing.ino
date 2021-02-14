@@ -2,6 +2,16 @@
 // Based on https://github.com/alitai/GS3-Chimera
 //***************************************************************************
 
+#define GRAPH_X_0 3
+#define GRAPH_Y_0 309
+#define GRAPH_X_SPAN 237
+#define GRAPH_Y_SPAN 194
+#define GRAPH_PWM_SPAN 400 // in PWM - (0 - x)% for VNH5019 driver usually 0-400
+#define GRAPH_PRESSURE_SPAN 10 //in bar: 0-x bar usually 0-10 bar
+#define GRAPH_FLOW_VOLUME_SPAN 100 //in ml/min usually 0-90ml
+#define GRAPH_FLOW_RATE_SPAN 400 //in ml/min usually 0-400ml/min
+
+
 //***********************************************************************
 // Color choices
 //***********************************************************************
